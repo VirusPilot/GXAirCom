@@ -30,13 +30,10 @@ jobs:
     - name: Build project
       run: |
         platformio run
-        cd $GITHUB_WORKSPACE
-        cp -f partitions.csv bin/psRam/v7.0.0/
-        cp -f bin/boot_app0.bin bin/psRam/v7.0.0/
 
     - uses: actions/upload-artifact@v4
       with:
         name: GXAirCom
         path: |
-         bin/psRam/v7.0.0/
+         bin/
         if-no-files-found: error
