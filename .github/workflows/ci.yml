@@ -31,13 +31,12 @@ jobs:
       run: |
         platformio run
         cd $GITHUB_WORKSPACE
-        cp -f T-Beam-Stratux.csv bin/T-Beam-Stratux/v7.0.0/
-        cp -f bin/boot_app0.bin bin/T-Beam-Stratux/v7.0.0/
-        cp -f bin/psRam/v7.0.0/spiffs.bin bin/T-Beam-Stratux/v7.0.0/
+        cp -f partitions.csv bin/psRam/v7.0.0/
+        cp -f bin/boot_app0.bin bin/psRam/v7.0.0/
 
     - uses: actions/upload-artifact@v4
       with:
         name: GXAirCom
         path: |
-         bin/T-Beam-Stratux/
+         bin/psRam/v7.0.0/
         if-no-files-found: error
