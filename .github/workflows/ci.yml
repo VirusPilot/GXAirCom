@@ -35,5 +35,6 @@ jobs:
       with:
         name: GXAirCom
         path: |
-         bin/
+         bin/psRam/v7.0.0/
+         bin/T-Beam-S3Core/v7.0.0/
         if-no-files-found: error
