@@ -173,8 +173,7 @@ void flarm_getFrequencyChannels(uint8_t zone,float *frequency, uint8_t *channels
   if ((zone < 1) || (zone > 6)) return; //zone not defined
 /*
 - Zone 1: f0=868.2, f1=868.4
-- Zone 2, 5, 6: f0=902.2, nch=65
-- Zone 3: f0=869.25, nch=1
+- Zone 2, 3, 5, 6: f0=902.2, nch=65
 - Zone 4: f0=917.0, nch=24
 */
   if (zone == 1){
@@ -190,7 +189,7 @@ void flarm_getFrequencyChannels(uint8_t zone,float *frequency, uint8_t *channels
     *frequency = 917.0;
     *channels = 24;
   }else{
-    //Zone 2, 5, 6: f0=902.2, nch=65
+    //Zone 2, 3, 5, 6: f0=902.2, nch=65
     *frequency = 902.2;
     *channels = 65;
   }
