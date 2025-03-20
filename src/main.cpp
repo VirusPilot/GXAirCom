@@ -4317,10 +4317,10 @@ bool setupUbloxConfig(){
         continue;
       }
       //xcguide uses GSA für GPS-Fix
-      if (!ublox.disableNMEAMessage(UBX_NMEA_GSA,COM_PORT_UART1)){
-        log_e("ublox: error setting parameter %d",UBX_NMEA_GSA);
-        continue;
-      }
+      // if (!ublox.disableNMEAMessage(UBX_NMEA_GSA,COM_PORT_UART1)){
+      //   log_e("ublox: error setting parameter %d",UBX_NMEA_GSA);
+      //   continue;
+      // }
 
       //enable nmea-sentences
       if (!ublox.enableNMEAMessage(UBX_NMEA_GGA,COM_PORT_UART1)){
