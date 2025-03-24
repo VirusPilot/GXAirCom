@@ -254,7 +254,7 @@ private:
   GxModule *pGxModule = NULL;
   SPIClass *_spi = NULL;
   uint8_t radioType = RADIO_NULL;
-  uint8_t _power = 10;
+  uint8_t _power = 20;
   float _freq = 868.2;
   float _bw;
   uint8_t _cs;
