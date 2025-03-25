@@ -1104,8 +1104,7 @@ int16_t LoRaClass::switchLORA(float frequency,uint16_t loraBandwidth){
       pGxModule->SPIwriteRegister(0x40,0x00); //RegDioMapping1
       pGxModule->SPIwriteRegister(0x41,0x00); //RegDioMapping2
       pGxModule->SPIwriteRegister(0x4B,0x09); //RegTcxo
-      //pGxModule->SPIwriteRegister(0x4D,0x84); //RegPaDac, set to +17dBm
-      pGxModule->SPIwriteRegister(0x4D,0x87); //RegPaDac, set to +20dBm
+      pGxModule->SPIwriteRegister(0x4D,0x84); //RegPaDac
       pGxModule->SPIwriteRegister(0x61,0x19); //RegAgcRef
       pGxModule->SPIwriteRegister(0x62,0x0C); //RegAgcThresh1
       pGxModule->SPIwriteRegister(0x63,0x4B); //RegAgcThresh2
