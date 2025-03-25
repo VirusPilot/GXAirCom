@@ -446,8 +446,8 @@ int16_t LoRaClass::begin(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t s
       data[3] = 0x01;
       SPIwriteCommand(0x95, data, 4);  
       //set output-power and ramp-time
-      data[0] = 0x16; // +22 dBm
-      data[1] = 0x04; // 200us ramp
+      data[0] = power;
+      data[1] = 0x04;
       SPIwriteCommand(0x8E, data, 2);
       GxModule::attachInterrupt(digitalPinToInterrupt(pGxModule->getIrq()), setFlag, RISING);
       sx1262CheckAndClearErrors();
