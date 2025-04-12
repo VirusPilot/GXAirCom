@@ -39,3 +39,4 @@ jobs:
          bin/psRam/v8.2.0/
          bin/T-Beam-S3Core/v8.2.0/
         if-no-files-found: error
+        retention-days: 7
