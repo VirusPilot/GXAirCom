@@ -451,6 +451,42 @@ uint8_t setCFG[3][8] PROGMEM = {
 	{0xF1, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Ublox - Time of Day and Clock Information
 };
 
+
+void radiotest(){
+  LoRaClass radio;
+  SPI.begin(5, 19, 27, 18);
+  radio.setPins(&SPI,18,26,23);
+  radio.begin();
+  radio.switchFSK(869200000uL);
+  radio.startReceive();	
+  //radio.FSKRx(869200000uL);
+  static uint8_t rxCount = 0;
+  while(1){
+    // put your main code here, to run repeatedly:
+    //radio.run();
+    if (radio.isRxMessage()){
+      int16_t packetSize = radio.getPacketLength();
+      rxCount ++;
+      log_i("new message arrived %d len=%d",rxCount,packetSize);
+      if (packetSize == 26){
+        uint8_t rx_frame[26];	
+        radio.readData(&rx_frame[0], packetSize);
+        char Buffer[500];	
+        int len = 0;
+        for (int i = 0; i < 26; i++){
+          len += sprintf(Buffer+len,"%02X", rx_frame[i]);
+        }
+        len += sprintf(Buffer+len,"\n");
+        Serial.print(Buffer);
+        //log_i("%d received:%s",rxCount,Buffer[0]);
+      }
+      //radio.FSKRx(869200000uL);
+      radio.startReceive();	
+    }
+    delay(10);
+  }
+}
+
 // rounds a number to 2 decimal places
 // example: round(3.14159) -> 3.14
 double round2(double value) {
@@ -3002,8 +3038,8 @@ void taskWeather(void *pvParameters){
     return;    
   }
   //const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;   //only every 1sek.
-  const TickType_t xDelay = 10 / portTICK_PERIOD_MS;   //only every 10ms.
-  TickType_t xLastWakeTime = xTaskGetTickCount (); //get actual tick-count
+  //const TickType_t xDelay = 10 / portTICK_PERIOD_MS;   //only every 10ms.
+  //TickType_t xLastWakeTime = xTaskGetTickCount (); //get actual tick-count
   tUploadData = millis();
   tSendData = millis();
   tLastWindSpeed = millis();
@@ -3881,8 +3917,114 @@ void checkSystemCmd(const char *ch_str){
     status.sNewVersion = sRet;
     status.updateState = 60; //check for Update automatic
     add2OutputString("#SYC UPDATE NEW VERSION\r\n");
+    return;
   }
-  return;
+  //Query BattVoltage
+  if (line.indexOf("#SYC VBAT?") >= 0){
+    float vbat = status.battery.voltage / 1000.0;
+    add2OutputString("#SYC VBAT=" + String(vbat, 2) + "\r\n");
+    return;
+  }
+
+  #ifdef GSMODULE  
+  //Query Rain values
+  if (line.indexOf("#SYC RAIN?") >= 0){
+    add2OutputString("#SYC RAIN1H=" + String(status.weather.rain1h, 2) + ",RAIN1D=" + String(status.weather.rain1d, 2) + "\r\n");
+    return;
+  }
+  //Query and set FanetUploadInterval
+  if (line.indexOf("#SYC FANETWDINT?") >= 0){
+    // Return the interval in seconds, not milliseconds
+    add2OutputString("#SYC FANETWDINT=" + String(setting.wd.FanetUploadInterval / 1000) + "\r\n");
+    return;
+  }
+  iPos = getStringValue(line,"#SYC FANETWDINT=","\r",0,&sRet);
+  if (iPos >= 0){
+    uint32_t intervalSec = atol(sRet.c_str());
+    intervalSec = constrain(intervalSec, 10, 600); // Accept 10–600 seconds
+    uint32_t intervalMs = intervalSec * 1000;
+    add2OutputString("#SYC OK\r\n");
+    if (intervalMs != setting.wd.FanetUploadInterval){
+      setting.wd.FanetUploadInterval = intervalMs;
+      write_FanetUploadInterval();
+      Serial.println("FANETWDINT changed --> need to restart");
+      status.restart.doRestart = true;
+    }
+    return;
+  }
+  //Query and set windDirOffset
+  if (line.indexOf("#SYC WINDOFFSET?") >= 0){
+    add2OutputString("#SYC WINDOFFSET=" + String(setting.wd.windDirOffset) + "\r\n");
+    return;
+  }
+  iPos = getStringValue(line, "#SYC WINDOFFSET=", "\r", 0, &sRet);
+  if (iPos >= 0){
+    int16_t offset = atoi(sRet.c_str());
+    offset = constrain(offset, -180, 180); // wind dir offset should be in -180° to +180°
+    add2OutputString("#SYC OK\r\n");
+    if (offset != setting.wd.windDirOffset){
+      setting.wd.windDirOffset = offset;
+      write_windDirOffset();
+      Serial.println("WINDOFFSET changed --> need to restart");
+      status.restart.doRestart = true;
+    }
+    return;
+  }
+  //Query and set RTC time
+  if (line.indexOf("#SYC GETTIME?") >= 0){
+    getRTCTime(); // sets system time using RTC
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      add2OutputString("#SYC ERROR: Failed to get local time\r\n");
+      return;
+    }
+    char buf[32];
+    snprintf(buf, sizeof(buf), "#SYC TIME=%04d-%02d-%02d_%02d:%02d:%02d\r\n",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    add2OutputString(String(buf));
+    return;
+  }
+  iPos = getStringValue(line, "#SYC SETTIME=", "\r", 0, &sRet);
+  if (iPos >= 0){
+    struct tm timeinfo;
+    memset(&timeinfo, 0, sizeof(struct tm));
+    // Expect format: YYYY-MM-DD_HH:MM:SS
+    if (sscanf(sRet.c_str(), "%4d-%2d-%2d_%2d:%2d:%2d",
+               &timeinfo.tm_year, &timeinfo.tm_mon, &timeinfo.tm_mday,
+               &timeinfo.tm_hour, &timeinfo.tm_min, &timeinfo.tm_sec) == 6) {
+      timeinfo.tm_year -= 1900; // tm struct expects years since 1900
+      timeinfo.tm_mon -= 1;     // tm_mon is 0-based (0=Jan)
+
+      setRTCTime(timeinfo);
+      add2OutputString("#SYC OK\r\n");
+    } else {
+      add2OutputString("#SYC ERROR: Invalid time format\r\n");
+    }
+    return;
+  }
+  // Query anemometer type
+  if (line.indexOf("#SYC ANEMO?") >= 0){
+    add2OutputString("#SYC ANEMO=" + String((uint8_t)setting.wd.anemometer.AnemometerType) + "\r\n");
+    return;
+  }
+
+  // Set anemometer type
+  iPos = getStringValue(line, "#SYC ANEMO=", "\r", 0, &sRet);
+  if (iPos >= 0){
+    uint8_t u8 = atoi(sRet.c_str());
+    u8 = constrain(u8, 0, 5); // valid enum range
+    add2OutputString("#SYC OK\r\n");
+    if (u8 != (uint8_t)setting.wd.anemometer.AnemometerType){
+      setting.wd.anemometer.AnemometerType = eAnemometer(u8);
+      write_AnemometerType();
+      Serial.println("ANEMO changed --> need restart");
+      status.restart.doRestart = true;
+    }
+    return;
+  }
+  #endif  
+  return;  
 }
 
 
@@ -4541,7 +4683,6 @@ void taskStandard(void *pvParameters){
   #endif
   #endif
   // create a binary semaphore for task synchronization
-  long frequency = FREQUENCY868;
   fanet.setRFMode(setting.RFMode);
   uint8_t radioChip = RADIO_SX1276;
   if ((setting.boardType == eBoard::T_BEAM_SX1262) || (setting.boardType == eBoard::T_BEAM_S3CORE) || (setting.boardType == eBoard::HELTEC_WIRELESS_STICK_LITE_V3) || (setting.boardType == eBoard::HELTEC_LORA_V3)) radioChip = RADIO_SX1262;
@@ -4554,7 +4695,7 @@ void taskStandard(void *pvParameters){
     fmac.setAddr(strtol(setting.myDevId.c_str(), NULL, 16));
   }
 
-  fanet.begin(PinLora_SCK, PinLora_MISO, PinLora_MOSI, PinLora_SS,PinLoraRst, PinLoraDI0,PinLoraGPIO,frequency,setting.FrqCor,14,radioChip);
+  fanet.begin(PinLora_SCK, PinLora_MISO, PinLora_MOSI, PinLora_SS,PinLoraRst, PinLoraDI0,PinLoraGPIO,setting.FrqCor * 1000,14,radioChip);
   fanet.setGPS(status.gps.bHasGPS);
   #ifdef GSMODULE
   if (setting.Mode == eMode::GROUND_STATION){
@@ -4879,6 +5020,19 @@ void taskStandard(void *pvParameters){
     if (fanet.getlastMsgData(&msgData)){
       status.lastFanetMsg = msgData.msg;
       status.FanetMsgCount++;
+      if ((pMqtt) && (setting.mqtt.mode.bits.enable)) {
+        StaticJsonDocument<300> doc;
+        char msg_buf[300];
+        char timestamp[30];
+        snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02dT%02d:%02d:%02d+00:00",
+                 year(), month(), day(), hour(), minute(), second());
+        doc["DT"] = timestamp;
+        doc["ID"] = fanet.getDevId(msgData.srcDevId);
+        doc["msg"] = msgData.msg;
+        doc["rssi"] = msgData.rssi;
+        serializeJson(doc, msg_buf);
+        pMqtt->sendTopic("RxMsg", msg_buf, false);
+      }      
       if (msgData.dstDevId == fanet._myData.devId){
         String sRet = "";
         int pos = getStringValue(msgData.msg,"P","#",0,&sRet);
