@@ -8,6 +8,17 @@ char msg_buf[500];
 #define MAXCLIENTS 10
 uint8_t clientPages[MAXCLIENTS];
 
+#define HTML 0
+#define CSS 1
+#define JS 2
+
+struct websites {
+    const char *name;
+    const uint8_t *pData;
+    size_t len;
+    uint8_t type;
+};
+
 Logger logger;
 /***********************************************************
  * Functions
@@ -246,6 +257,7 @@ void onWebSocketEvent(uint8_t client_num,
           #ifdef GSMODULE
           if (setting.Mode == eMode::GROUND_STATION){
             doc.clear();
+            doc["wdAnemo"] = setting.wd.anemometer.AnemometerType;
             doc["WsMode"] = setting.wd.mode.mode;
             doc["wsTemp"] = String(status.weather.temp,1);
             doc["wsHum"] = String(status.weather.Humidity,1);
@@ -335,6 +347,7 @@ void onWebSocketEvent(uint8_t client_num,
           doc["GsSrO"] = setting.gs.sunriseOffset;
           doc["GsSsO"] = setting.gs.sunsetOffset;
           doc["wdAnemo"] = setting.wd.anemometer.AnemometerType;
+          doc["wdFrequ"] = setting.wd.frequency;
           doc["wdAnemoAdsGain"] = setting.wd.anemometer.AnemometerAdsGain;
           doc["wdAnemoAdsWSpeedMinVoltage"] = setting.wd.anemometer.AnemometerAdsWSpeedMinVoltage;
           doc["wdAnemoAdsWSpeedMaxVoltage"] = setting.wd.anemometer.AnemometerAdsWSpeedMaxVoltage;
@@ -526,6 +539,7 @@ void onWebSocketEvent(uint8_t client_num,
         if (root.containsKey("GsSrO")) newSetting.gs.sunriseOffset = eGsPower(doc["GsSrO"].as<int32_t>());
         if (root.containsKey("GsSsO")) newSetting.gs.sunsetOffset = eGsPower(doc["GsSsO"].as<int32_t>());
         //aneometer settings
+        if (root.containsKey("wdFrequ")) newSetting.wd.frequency = doc["wdFrequ"].as<float>();
         if (root.containsKey("wdAnemo")) newSetting.wd.anemometer.AnemometerType = eAnemometer(doc["wdAnemo"].as<uint8_t>());
         if (root.containsKey("wdAnemoAdsGain")) newSetting.wd.anemometer.AnemometerAdsGain = eAnemometer(doc["wdAnemoAdsGain"].as<uint8_t>());
         if (root.containsKey("wdAnemoAdsWSpeedMinVoltage")) newSetting.wd.anemometer.AnemometerAdsWSpeedMinVoltage = doc["wdAnemoAdsWSpeedMinVoltage"].as<float>();
@@ -781,25 +795,38 @@ void onPageNotFound(AsyncWebServerRequest *request) {
 static int restartNow = false;
 
 static void handle_update_progress_cb(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-  uint32_t free_space = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  //uint32_t free_space = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+  size_t uploaded = index + len;
+  size_t uploadSize = request->contentLength();
+  int progress = ((uploaded * 100) / uploadSize)/5;
+  static int last_perc = 0;  
+
   if (!index){
+    log_i("webupdate starting");
     WebUpdateRunning = true;
     delay(500); //wait 1 second until tasks are stopped
-    Serial.println("webupdate starting");      
+          
     //Update.runAsync(true);
     if (filename.startsWith("spiffs")){
       if (!Update.begin(0x30000,U_SPIFFS)) {
         Update.printError(Serial);
       }
     }else{
-      if (!Update.begin(free_space,U_FLASH)) {
+      //if (!Update.begin(free_space,U_FLASH)) {
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN,U_FLASH)) {
         Update.printError(Serial);
       }
     }
   }
-  //log_i("l=%d",len);
-  if (Update.write(data, len) != len) {
-    Update.printError(Serial);
+  if (!Update.hasError()){
+
+    if(last_perc != progress){
+      last_perc = progress;
+      log_i("update progress=%d%",progress*5);
+    }
+    if (Update.write(data, len) != len){
+        Update.printError(Serial);
+    }
   }
 
   if (final) {
@@ -807,7 +834,7 @@ static void handle_update_progress_cb(AsyncWebServerRequest *request, String fil
       Update.printError(Serial);
     } else {
       restartNow = true;//Set flag so main loop can issue restart call
-      Serial.println("Update complete");      
+      log_i("Update complete");      
     }
   }
 }
@@ -819,7 +846,15 @@ void loadFromSPIFFS(AsyncWebServerRequest *request,String path,String dataType =
   request->send(response);
 }
 #else
-void loadFromFlash(AsyncWebServerRequest *request,const uint8_t * content, size_t len,String dataType = "text/html") {
+void loadFromFlash(AsyncWebServerRequest *request,const uint8_t * content, size_t len,uint8_t type= HTML) {
+  String dataType;
+  if (type == HTML){
+    dataType = "text/html";
+  }else if (type == CSS){
+    dataType = "text/css";
+  }else if (type == JS){
+    dataType = "text/javascript";
+  }
   AsyncWebServerResponse *response = request->beginResponse_P(200, dataType,content, len);
   response->addHeader("Content-Encoding", "gzip");
   request->send(response);   
@@ -828,55 +863,37 @@ void loadFromFlash(AsyncWebServerRequest *request,const uint8_t * content, size_
 
 
 void Web_setup(void){
+  websites sites[] = {
+    {"/",index_html_gz,index_html_gz_len,HTML},
+    {"/index.html",index_html_gz,index_html_gz_len,HTML},
+    {"/favicon.ico",favicon_ico_gz,favicon_ico_gz_len,HTML},
+    {"/weather.html",weather_html_gz,weather_html_gz_len,HTML},
+    {"/neighbours.html",neighbours_html_gz,neighbours_html_gz_len,HTML},
+    {"/info.html",info_html_gz,info_html_gz_len,HTML},
+    {"/communicator.html",communicator_html_gz,communicator_html_gz_len,HTML},
+    {"/sendmessage.html",sendmessage_html_gz,sendmessage_html_gz_len,HTML},
+    {"/igclogs.html",igclogs_html_gz,igclogs_html_gz_len,HTML},
+    {"/fullsettings.html",fullsettings_html_gz,fullsettings_html_gz_len,HTML},
+    {"/fwupdate",fwupdate_html_gz,fwupdate_html_gz_len,HTML},
+    {"/style.css",style_css_gz,style_css_gz_len,CSS},
+    {"/scripts.js",scripts_js_gz,scripts_js_gz_len,JS}
+  };
   for (int i = 0;i < MAXCLIENTS;i++) clientPages[i] = 0;
   // On HTTP request for root, provide index.html file
-  server.on("/fwupdate", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite      
-      loadFromSPIFFS(request,request->url() + ".html.gz");
-    #else
-      loadFromFlash(request,fwupdate_html_gz,fwupdate_html_gz_len);
-    #endif
-  });
+  for (const auto &site : sites) {
+    server.on(site.name, HTTP_GET, [site](AsyncWebServerRequest *request){
+      #ifdef useSpiffsWebsite      
+        loadFromSPIFFS(request,request->url() + ".html.gz");
+      #else
+        loadFromFlash(request,site.pData ,site.len,site.type);
+      #endif
+    });
+  }
   // handler for the /update form POST (once file upload finishes)
   server.on("/fwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
       request->send(200);
     }, handle_update_progress_cb);
-  server.on("/fullsettings.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,fullsettings_html_gz,fullsettings_html_gz_len);
-    #endif    
-  });
-  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,index_html_gz,index_html_gz_len);
-    #endif
-  });
-  server.on("/sendmessage.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,sendmessage_html_gz,sendmessage_html_gz_len);
-    #endif
-  });
-  server.on("/neighbours.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,neighbours_html_gz,neighbours_html_gz_len);
-    #endif
-  });
-  // new igc track logger page
-  server.on("/igclogs.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,igclogs_html_gz,igclogs_html_gz_len);
-    #endif
-  });
+  /*
   server.on("/download", HTTP_GET, [](AsyncWebServerRequest *request){
     SD_file_download(request);
   });
@@ -885,56 +902,11 @@ void Web_setup(void){
     request->redirect("/igclogs.html");    
   });
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,"/index.html.gz");
-    #else
-      loadFromFlash(request,index_html_gz,index_html_gz_len);
-    #endif
-  });
-  server.on("/info.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,info_html_gz,info_html_gz_len);
-    #endif
-  });
-  server.on("/msgtype1.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype2.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype3.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype4.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype5.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/msgtype7.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, request->url(), "text/html",false,processor);
-  });
-  server.on("/weather.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,weather_html_gz,weather_html_gz_len);
-    #endif
-  });  
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
     #ifdef useSpiffsWebsite
       loadFromSPIFFS(request,request->url() + ".gz","text/css");
     #else
       loadFromFlash(request,style_css_gz,style_css_gz_len,"text/css");
-      /*
-      const char* dataType = "text/css";
-      AsyncWebServerResponse *response = request->beginResponse_P(200, dataType,style_css_gz, style_css_gz_len);
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response); 
-      */
     #endif
   });
   server.on("/scripts.js", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -944,15 +916,7 @@ void Web_setup(void){
       loadFromFlash(request,scripts_js_gz,scripts_js_gz_len,"text/javascript");
     #endif
   });
-  server.on("/communicator.html", HTTP_GET, [](AsyncWebServerRequest *request){
-    #ifdef useSpiffsWebsite
-      loadFromSPIFFS(request,request->url() + ".gz");
-    #else
-      loadFromFlash(request,communicator_html_gz,communicator_html_gz_len);
-    #endif
-  });
-
-
+  */  
   // Handle requests for pages that do not exist
   server.onNotFound(onPageNotFound);
 

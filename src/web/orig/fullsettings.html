@@ -32,7 +32,8 @@ function setVis(){
     document.getElementById("accCalib3").style.display=''; /*set calibration of ACC to invisible*/
     document.getElementById("accCalib4").style.display=''; /*set calibration of ACC to invisible*/
   }
-  document.getElementById("VisGsScreen").style.display='none'; //set screen option for ground-station to off
+  document.getElementById("visWdFrequ").style.display='none';
+  document.getElementById("VisGsScreen").style.display='none'; /*set screen option for ground-station to off*/
   document.getElementById("VisGsSrO").style.display='none';
   document.getElementById("VisGsSsO").style.display='none';
   document.getElementById("VisFrequ").style.display='none'; /*set Frequency-settings invisible*/
@@ -56,7 +57,7 @@ function setVis(){
   document.getElementById("VisWDBme").style.display='none';  /*disable temp-correction for BME*/
   document.getElementById("VisAutoUpdate").style.display='none';  /*disable autoupdate*/
   document.getElementById("VisADS1015Exp").style.display='none';
-  document.getElementById("VisADS1015").style.display='none'; //set ADS1015 settings invisible
+  document.getElementById("VisADS1015").style.display='none'; /*set ADS1015 settings invisible*/
   document.getElementById("VisWifiOff").style.display='none';  
   document.getElementById("VisAvgFNT").style.display='none';
   document.getElementById("VisAvgWD").style.display='none';
@@ -65,7 +66,7 @@ function setVis(){
   document.getElementById("VisWU").style.display='none'; /*set weather-underground upload invisible*/
   document.getElementById("VisWI").style.display='none'; /*set windy upload invisible*/
   if (document.getElementById("wificonnect").value != 2){
-    document.getElementById("VisWifiOff").style.display=''; //show wifi-off
+    document.getElementById("VisWifiOff").style.display=''; /*show wifi-off*/
   }
   if (document.getElementById("setView").value == SETTING_EXPERT){ /*we are expert user*/
     document.getElementById("VisFrequ").style.display=''; /*set Frequency-settings visible*/
@@ -98,7 +99,7 @@ function setVis(){
   }    
   if (document.getElementById("mode").value == 1){ /*mode ground-station*/
     if (document.getElementById("disp").value != 0){
-      document.getElementById("VisGsScreen").style.display=''; //set screen-option to visible
+      document.getElementById("VisGsScreen").style.display=''; /*set screen-option to visible*/
     }    
     document.getElementById("VisOwnWs").style.display='';  /*enable Own weather-station  */
     if (document.getElementById("setView").value >= SETTING_ADVANCED){ /*we are advanced or expert*/
@@ -107,7 +108,10 @@ function setVis(){
         document.getElementById("VisAWFFNT").style.display=''; /*set advanced weather settings visible    */
       }
     }
-    if (wsMode & wsModeEn){ //weather station enabled
+    if (wsMode & wsModeEn){ /*weather station enabled*/
+      if (document.getElementById("wdAnemo").value == 5){
+        document.getElementById("visWdFrequ").style.display=''; /*set frequency visible*/
+      }
       document.getElementById("VisAvgFNT").style.display='';
       document.getElementById("VisAvgWD").style.display='';
       document.getElementById("VisWD").style.display=''; /*set weather-data invisible*/
@@ -126,10 +130,10 @@ function setVis(){
         document.getElementById("VisWDBme").style.display='';  /*enable temp-correction for BME*/
       }
       if (document.getElementById("wdAnemo").value == 2){
-        document.getElementById("VisADS1015").style.display=''; //enable ADS1015 settings
+        document.getElementById("VisADS1015").style.display=''; /*enable ADS1015 settings*/
       }
       if ((document.getElementById("wdAnemo").value == 2) && (document.getElementById("setView").value == SETTING_EXPERT)){
-        document.getElementById("VisADS1015Exp").style.display=''; //enable ADS1015 expert-settings
+        document.getElementById("VisADS1015Exp").style.display=''; /*enable ADS1015 expert-settings*/
       }    
     }else{
       document.getElementById("tWu").innerHTML='Broadcast weather-underground data to FANET';
@@ -494,7 +498,7 @@ function checkValues(){
 function importJson(){
   console.log("start reading file:");  
   const uploadInput = document.getElementById("importJson");
-  // Calculate total size
+  /* Calculate total size*/
   let numberOfBytes = 0;
   for (const file of uploadInput.files) {
     numberOfBytes += file.size;
@@ -508,11 +512,11 @@ function importJson(){
   const self = this;
   console.log("reading " + numberOfBytes + " Bytes, file:" + file);
   reader.onload = function(e) { 
-    //console.log(e.target.result);
+    /*console.log(e.target.result);*/
     parseJson(e.target.result);  
-  }
+  };
   reader.readAsText(file);
-  uploadInput.value = ""; //clear value again
+  uploadInput.value = ""; /*clear value again*/
 }
 function exportJson() {
 
@@ -590,6 +594,7 @@ getValue(obj,
     "z[0]",
     "sFWD",
     "wdTempOffset",
+    "wdFrequ",
     "wdWDirOffset",
     "WUUlEnable",
     "WUUlID",
@@ -816,6 +821,7 @@ function sendValues(){
     [
     "sFWD",
     "wdTempOffset",
+    "wdFrequ",
     "wdWDirOffset",
     "WUUlEnable",
     "WUUlID",
@@ -926,21 +932,7 @@ function parseJson(data){
         document.getElementById("VisMPU").style.display='none';
       }
     }
-    var e = document.getElementById(key);
-    if (e == null) continue;
-    if (e instanceof HTMLSelectElement) {     /* <select>*/
-      document.getElementById(key).value = myObj[key];
-    }else if ((e instanceof HTMLInputElement ) && (e.getAttribute('type') == 'checkbox')){     /* <input checkbox>*/
-      if (myObj[key] == 1){
-        document.getElementById(key).checked = true;
-      }else{
-        document.getElementById(key).checked = false;
-      }
-      
-    }else{
-      document.getElementById(key).textContent = myObj[key];
-      document.getElementById(key).value = myObj[key];
-    }
+    setElement(key,myObj[key]);
   }
   setVis(); /*now set visibility*/
 }
@@ -1338,7 +1330,13 @@ function onMessage(evt) {
               <option value="2">ADS1015</option>
               <option value="3">PEETBROS</option>
               <option value="4">MISOL</option>
+              <option value="5">WS90 (RF with CC1101)</option>
+              <option value="6">WS85 serial</option>
             </select></td>
+          </tr>
+          <tr id="visWdFrequ">
+            <th>Frequency of CC1101-Module (868.350/433.0)</th>
+            <td><input type="number" id="wdFrequ" step="0.001"></td>
           </tr>
           <tr>
             <th>offset wind direction [°]</th>
