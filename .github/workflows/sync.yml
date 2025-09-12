@@ -28,7 +28,7 @@ jobs:
       - name: Check for new commits
         id: check
         run: |
-          COMMITS=$(git log HEAD..upstream/main --oneline || true)
+          COMMITS=$(git log HEAD..upstream/master --oneline || true)
           if [ -z "$COMMITS" ]; then
             echo "no new commits"
             echo "updated=false" >> $GITHUB_OUTPUT
