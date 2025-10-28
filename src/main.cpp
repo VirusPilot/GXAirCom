@@ -38,6 +38,7 @@
 
 #include "XPowersLib.h"
 #include "TimeDefs.h"
+#include "tools.h"
 
 //#include <ws90.h>
 
@@ -3034,7 +3035,9 @@ void sendRawWeatherData(Weather::weatherData *weather){
 void fw2Fanet(void){
   static uint32_t tCheck = millis();
   uint32_t tAct = millis();
-  if (!status.bInternetConnected) return;
+  if (!status.bInternetConnected) return; //no internet-connection
+  if (!setting.mqtt.mode.bits.enable) return; //mqtt not enabled
+  if (status.MqttStat != 100) return; //mqtt not connected
   if (!timeOver(tAct,tCheck,1000)){ //we check only every second
     return;
   }
@@ -3043,8 +3046,8 @@ void fw2Fanet(void){
     return;
   }
   for (int index = 0; index < status.lstFw2Fanet.size(); ++index){
-    if ((timeOver(tAct,status.lstFw2Fanet[index].tweather,setting.gs.lstFw2Fanet[index].tSend * 1000)) && (setting.gs.lstFw2Fanet[index].en)){
-      status.lstFw2Fanet[index].tweather = tAct;
+    if ((timeOver(tAct,status.lstFw2Fanet[index].tSendWeather,setting.gs.lstFw2Fanet[index].tSend * 1000)) && (setting.gs.lstFw2Fanet[index].en)){
+      status.lstFw2Fanet[index].tSendWeather = tAct;
       wdServiceQueueData queue;
       StaticJsonDocument<500> doc; //Memory pool  
       doc.clear();
@@ -3055,7 +3058,7 @@ void fw2Fanet(void){
         doc["Service"] = "WU"; //at WU we don't get the name        
         if (status.lstFw2Fanet[index].name.length() == 0){
           status.lstFw2Fanet[index].name = setting.gs.lstFw2Fanet[index].id;
-          status.lstFw2Fanet[index].tName = millis() - SENDNAMEINTERVAL; //send name immediately
+          status.lstFw2Fanet[index].tSendName = millis() - SENDNAMEINTERVAL; //send name immediately
         }
         break;
       case wdService::holfuy:
@@ -3073,8 +3076,8 @@ void fw2Fanet(void){
 			}       
       break;
     }
-    if ((sendFanetData == 0) && (timeOver(tAct,status.lstFw2Fanet[index].tName,SENDNAMEINTERVAL)) && (status.lstFw2Fanet[index].name.length() > 0)){
-      status.lstFw2Fanet[index].tName = tAct;
+    if ((sendFanetData == 0) && (timeOver(tAct,status.lstFw2Fanet[index].tSendName,SENDNAMEINTERVAL)) && (status.lstFw2Fanet[index].name.length() > 0)){
+      status.lstFw2Fanet[index].tSendName = tAct;
       fanetAddrOffsetName = index+1;
       fanetString = status.lstFw2Fanet[index].name;
       sendFanetData = 2; //send name
@@ -4701,23 +4704,43 @@ void getWdServiceDataFromResponse(char* pData){
   if (assignIfExists(root,"name",name)){
     if ((status.lstFw2Fanet[index].name.length() == 0) && (name.length() > 0)){
       status.lstFw2Fanet[index].name = name;
-      status.lstFw2Fanet[index].tName = millis() - SENDNAMEINTERVAL; //send name immediately
+      status.lstFw2Fanet[index].tSendName = millis() - SENDNAMEINTERVAL; //send name immediately
     }
   }
-  assignIfExists(root,"lat",wData.lat);
-  assignIfExists(root,"lon",wData.lon);
-  if (assignIfExists(root,"temp",wData.temp)) wData.bTemp = true;
-  if (assignIfExists(root,"hum",wData.Humidity)) wData.bHumidity = true;
-  if (assignIfExists(root,"wDir",wData.wHeading)){
-    wData.bWind = true;
-    assignIfExists(root,"wSpeed",wData.wSpeed);
-    assignIfExists(root,"wGust",wData.wGust);
+  assignIfExistsCast<time_t,uint32_t>(root,"ts",status.lstFw2Fanet[index].ts);
+  //log_i("ts=%d,tNow=%d,tDiff=%d",status.lstFw2Fanet[index].ts,now(),tDiff);
+  assignIfExists(root,"lat",status.lstFw2Fanet[index].lat);
+  assignIfExists(root,"lon",status.lstFw2Fanet[index].lon);
+  if (assignIfExists(root,"temp",status.lstFw2Fanet[index].temp)) status.lstFw2Fanet[index].bTemp = true;
+  if (assignIfExists(root,"hum",status.lstFw2Fanet[index].Humidity)) status.lstFw2Fanet[index].bHumidity = true;
+  if (assignIfExists(root,"wDir",status.lstFw2Fanet[index].wDir)){
+    status.lstFw2Fanet[index].bWind = true;
+    assignIfExists(root,"wSpeed",status.lstFw2Fanet[index].wSpeed);
+    assignIfExists(root,"wGust",status.lstFw2Fanet[index].wGust);
 
   } 
-  //log_i("wdData index=%d,name=%s,lat=%.6f,lon=%.6f,temp=%.1f,hum=%.1f,wDir=%.0f,wSpeed=%.1f,wGust=%.1f",index,status.lstFw2Fanet[index].name.c_str(),wData.lat,wData.lon,wData.temp,wData.Humidity,wData.wHeading,wData.wSpeed,wData.wGust);
+  status.lstFw2Fanet[index].rxCnt ++;  
+  time_t tNow = now();
+  time_t tDiff = tNow - status.lstFw2Fanet[index].ts;
+  if (tDiff > 300){
+    status.lstFw2Fanet[index].error = 1;
+    log_e("timediff more than 5min. --> don't send WD (ts=%d,tNow=%d,tDiff=%d)",status.lstFw2Fanet[index].ts,tNow,tDiff);
+    return;
+  }
+  status.lstFw2Fanet[index].error = 0;
+  wData.lat = status.lstFw2Fanet[index].lat;
+  wData.lon = status.lstFw2Fanet[index].lon;
+  wData.bTemp = status.lstFw2Fanet[index].bTemp;
+  wData.temp = status.lstFw2Fanet[index].temp;
+  wData.bHumidity = status.lstFw2Fanet[index].bHumidity;
+  wData.Humidity = status.lstFw2Fanet[index].Humidity;
+  wData.wHeading = status.lstFw2Fanet[index].wDir;
+  wData.wSpeed = status.lstFw2Fanet[index].wSpeed;
+  wData.wGust = status.lstFw2Fanet[index].wGust;
   wData.bInternetGateway = true;
   wData.bStateOfCharge = true;
   wData.Charge = status.battery.percent;
+  //log_i("wdData index=%d,name=%s,lat=%.6f,lon=%.6f,temp=%.1f,hum=%.1f,wDir=%.0f,wSpeed=%.1f,wGust=%.1f",index,status.lstFw2Fanet[index].name.c_str(),wData.lat,wData.lon,wData.temp,wData.Humidity,wData.wHeading,wData.wSpeed,wData.wGust);
   fanet.writeMsgType4(&wData,index + 1);
 }
 
