@@ -722,7 +722,7 @@ int16_t LoRaClass::switchFSK(uint32_t frequency){
   //uint32_t tBegin = micros();
   _freq = frequency;
   int16_t ret = 0;
-  uint8_t syncWord[] = {0x99, 0xA5, 0xA9, 0x55, 0x66, 0x65, 0x96};	
+  uint8_t syncWord[] = {0x55, 0x99, 0xA5, 0xA9, 0x55, 0x66, 0x65, 0x96};	
   //log_i("switchFSK %d frequ=%.2f",millis(),_freq);
   switch (radioType){
     case RADIO_SX1262:
@@ -773,7 +773,7 @@ int16_t LoRaClass::switchFSK(uint32_t frequency){
       //data[1] = 0x08;
       //data[2] = 0x05;
       // sync word len (56 bits), addr comp off, fixed len
-      data[3] = 56;
+      data[3] = 64;
       data[4] = 0x00;
       data[5] = 0x00;
       // payload len = 52 bytes (2 * (24+2)), includes CRC 
@@ -794,7 +794,7 @@ int16_t LoRaClass::switchFSK(uint32_t frequency){
       data[4] = 0x66;
       data[5] = 0x65;
       data[6] = 0x96;
-      writeRegister(0x06C0, syncWord, 7);
+      writeRegister(0x06C0, syncWord, 8);
       ret = 0;
       break;
       }
