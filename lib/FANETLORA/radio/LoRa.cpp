@@ -1108,7 +1108,7 @@ int16_t LoRaClass::sx1276SetPacketParam(bool bReceive){
     syncWord[7] = 0x00;	     
   }else{
     //we send 8 syncword because of bad implementations
-    pGxModule->SPIwriteRegister(0x26,0x01); //RegPreambleLsb //preamble-size 1
+    pGxModule->SPIwriteRegister(0x26,0x02); //RegPreambleLsb //preamble-size 2
     syncWordLen = 8;
     syncWord[0] = 0x55;
     syncWord[1] = 0x99;
@@ -1154,7 +1154,7 @@ int16_t LoRaClass::sx1262SetPacketParam(bool bReceive){
   }
   //packet-params  
   data[0] = 0x00; // preamble len MSB
-  data[1] = 0x08; // preamble len 8Bit (0x55)
+  data[1] = 0x10; // preamble len 16Bit (0x55, 0x55)
   //data[2] = 0x05; //16Bits Preamble detector length
   data[2] = 0x04; //8Bits Preamble detector length  
   data[3] = syncWordLen * 8; // sync word len in Bits, 
