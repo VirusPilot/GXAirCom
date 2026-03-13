@@ -2301,7 +2301,8 @@ void setup() {
     PinGPSTX = 8;
     //wakeup GPS
     pinMode(7,OUTPUT);
-    digitalWrite(7,LOW);
+    //digitalWrite(7,LOW);
+    digitalWrite(7,HIGH);
 
     PinPPS = 6;
 
